@@ -85,35 +85,12 @@ void print(TKinFitter *fitter)
   std::cout << "=============================================" << std ::endl;
 }
 
-std::vector<TLorentzVector >  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector vC,TLorentzVector vD, TLorentzVector vE, TLorentzVector vF, int tagged=0)
+Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector vC,TLorentzVector vD, TLorentzVector vE, TLorentzVector vF, int tagged=0)
 {
-  
-  //tt+DM
-  /*
-    5 * 25.975547 * 114.88491 * -274.4603 *  298.7052 *
-    -5 * 28.805290 * 40.496204 * -15.66332 * 52.326545 *
-    -3 * 9.5761508 * 189.40284 * -232.5831 * 300.10049 *
-    4 * 80.284927 * 149.39610 * -154.3158 * 229.30438 *
-    3 * 50.045467 * -111.4080 * 7.8135638 * 122.38301 *
-    -4 * 40.281906 * -15.76513 * -35.26337 * 55.829444 *
-  */
-  //root [6] (v1+v3+v4).M() => 170.655024
-  //root [7] (v2+v5+v6).M() => 172.000022
-
-
-  /*  TLorentzVector vA(9.5761508,  189.40284,  -232.5831,  300.10049);//-3
-      TLorentzVector vB(80.284927,  149.39610,  -154.3158,  229.30438);//4
-      TLorentzVector vC(25.975547,  114.88491,  -274.4603,   298.7052 ); //5
-
-
-      TLorentzVector vD(50.045467,  -111.4080,  7.8135638,  122.38301);//3
-      TLorentzVector vE(40.281906,  -15.76513,  -35.26337,  55.829444);//-4
-      TLorentzVector vF(28.805290,  40.496204,  -15.66332,  52.326545 );//-5  
-  */
 
   std::vector<TLorentzVector >  vJets;
-  std::vector<TLorentzVector >  fitJets;
-  
+  //  std::vector<TLorentzVector >  fitJets;
+  static Double_t fitJets[2];
   vJets.push_back(vA);
   vJets.push_back(vB);
   vJets.push_back(vC);
@@ -121,10 +98,10 @@ std::vector<TLorentzVector >  testKinFitFWLite(TLorentzVector vA, TLorentzVector
   vJets.push_back(vE);
   vJets.push_back(vF);
 
-  
+
   const unsigned short size = 6;
   int numbers[size] = {0, 1, 2, 3, 4, 5};
-  
+
   unsigned int numJetForFit  = 6;
   int iteration = 0;
   float minChi2 = 999;
@@ -135,11 +112,16 @@ std::vector<TLorentzVector >  testKinFitFWLite(TLorentzVector vA, TLorentzVector
     do { 	 
       if (numbers[0] < numbers[1] && numbers[2] < numbers[3] && numbers[4] < numbers[5]){
 	if(tagged && (numbers[0] != 0 || numbers[1] != 1)) continue;
-
+	/*
+	if(tagged){
+	  for(unsigned short i=0; i<size; ++i) {
+	    std::cout << numbers[i] << (i+1!=size?" ":"\n");
+	  }
 		
+		
+	}
+	*/
 
-	//std::cout << numbers[0] <<" "<<numbers[1] <<" "<< numbers[2]<<" "<<std::endl;
-	//std::cout << numbers[3] <<" "<<numbers[4] <<" "<< numbers[5]<<" "<<std::endl;
 	
 	TLorentzVector v1;	TLorentzVector v2; 	TLorentzVector v3;
 	TLorentzVector v4;	TLorentzVector v5; 	TLorentzVector v6;
@@ -187,26 +169,25 @@ std::vector<TLorentzVector >  testKinFitFWLite(TLorentzVector vA, TLorentzVector
 	m6(0,0) = ErrEt (v6.Et(), v6.Eta()); // et
 	m6(1,1) = ErrEta(v6.Et(), v6.Eta()); // eta
 	m6(2,2) = ErrPhi(v6.Et(), v6.Eta()); // phi
-
+	TFitParticleEtEtaPhi *jetB = new TFitParticleEtEtaPhi( "jetB", "jetB", &v1, &m1 );
+	TFitParticleEtEtaPhi *jetBbar = new TFitParticleEtEtaPhi( "jetBbar", "jetBbar", &v2, &m2 );
 	TFitParticleEtEtaPhi *jetWq = new TFitParticleEtEtaPhi( "jetWq", "jetWq", &v3, &m3 );
 	TFitParticleEtEtaPhi *jetWqbar = new TFitParticleEtEtaPhi( "jetWqbar", "jetWqbar", &v4, &m4 );
-	TFitParticleEtEtaPhi *jetB = new TFitParticleEtEtaPhi( "jetB", "jetB", &v1, &m1 );
-
 	TFitParticleEtEtaPhi *jetWp = new TFitParticleEtEtaPhi( "jetWp", "jetWp", &v5, &m5 );
 	TFitParticleEtEtaPhi *jetWpbar = new TFitParticleEtEtaPhi( "jetWpbar", "jetWpbar", &v6, &m6 );
-	TFitParticleEtEtaPhi *jetBbar = new TFitParticleEtEtaPhi( "jetBbar", "jetBbar", &v2, &m2 );
+	
 
-	//vec1 and vec2 must make a W boson
+	//vec3 and vec4 must make a W boson
 	TFitConstraintM *mCons1 = new TFitConstraintM( "WMassConstraint", "WMass-Constraint", 0, 0 , 80.4);
 	mCons1->addParticles1( jetWq, jetWqbar );
-	//vec1 and vec2 and vec3 must make a top quark
+	//vec3 and vec4 and vec1 must make a top quark
 	TFitConstraintM *mCons2 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 175.);
 	mCons2->addParticles1( jetWq, jetWqbar, jetB );
 
-	//vec4 and vec5 must make a W boson
+	//vec5 and vec6 must make a W boson
 	TFitConstraintM *mCons3 = new TFitConstraintM( "WMassConstraint", "WMass-Constraint", 0, 0 , 80.4);
 	mCons3->addParticles1( jetWp, jetWpbar );
-	//vec4 and vec5 and vec6 must make a top quark
+	//vec5 and vec6 and vec2 must make a top quark
 	TFitConstraintM *mCons4 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 175.);
 	mCons4->addParticles1( jetWp, jetWpbar, jetBbar );
 
@@ -270,12 +251,16 @@ std::vector<TLorentzVector >  testKinFitFWLite(TLorentzVector vA, TLorentzVector
   //  cout<<"minChi2 "<<minChi2<<" minChi2Iteration: "<< minChi2Iteration<<endl;
   TLorentzVector chi2val; 
   Int_t ncombo=0;
-  for (unsigned int b=0; b < size; b++){
-    fitJets.push_back(vJets[bestCombo[b]]); 
-    ncombo += bestCombo[b]*pow(10,size-b -1);
-  }
+
+  for (unsigned int b=0; b < size; b++) ncombo += bestCombo[b]*pow(10,size-b -1);
+
+
   //cout << ncombo << " ncombo " << endl;
+  fitJets[0] = ncombo;
+  fitJets[1] = minChi2;
+  /*
   chi2val.SetPtEtaPhiE(ncombo,0,0,minChi2);
   fitJets.push_back(chi2val);
+  */
   return fitJets;
 }
