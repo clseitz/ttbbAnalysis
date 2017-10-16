@@ -17,6 +17,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+TLorentzVector FittedValues(TFitParticleEtEtaPhi * part){
+  TLorentzVector update_part;
+  update_part.SetPtEtaPhiE(part->getCurr4Vec()->Pt(),part->getCurr4Vec()->Eta(),part->getCurr4Vec()->Phi(),part->getCurr4Vec()->E());
+  return update_part;
+
+}
+
+
+
 Double_t ErrEt(Float_t Et, Float_t Eta) {
   Double_t InvPerr2, a, b, c;
   if(fabs(Eta) < 1.4){
@@ -65,32 +74,13 @@ Double_t ErrPhi(Float_t Et, Float_t Eta) {
   return InvPerr2;
 }
 
-void print(TKinFitter *fitter)
-{
-  std::cout << "=============================================" << std ::endl;
-  std::cout << "-> Number of measured Particles  : " << fitter->nbMeasParticles() << std::endl;
-  std::cout << "-> Number of unmeasured particles: " << fitter->nbUnmeasParticles() << std::endl;
-  std::cout << "-> Number of constraints         : " << fitter->nbConstraints() << std::endl;
-  std::cout << "-> Number of degrees of freedom  : " << fitter->getNDF() << std::endl;
-  std::cout << "-> Number of parameters A        : " << fitter->getNParA() << std::endl;
-  std::cout << "-> Number of parameters B        : " << fitter->getNParB() << std::endl;
-  std::cout << "-> Maximum number of iterations  : " << fitter->getMaxNumberIter() << std::endl;
-  std::cout << "-> Maximum deltaS                : " << fitter->getMaxDeltaS() << std::endl;
-  std::cout << "-> Maximum F                     : " << fitter->getMaxF() << std::endl;
-  std::cout << "+++++++++++++++++++++++++++++++++++++++++++++" << std ::endl;
-  std::cout << "-> Status                        : " << fitter->getStatus() << std::endl;
-  std::cout << "-> Number of iterations          : " << fitter->getNbIter() << std::endl;
-  std::cout << "-> S                             : " << fitter->getS() << std::endl;
-  std::cout << "-> F                             : " << fitter->getF() << std::endl;
-  std::cout << "=============================================" << std ::endl;
-}
 
-Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector vC,TLorentzVector vD, TLorentzVector vE, TLorentzVector vF, int tagged=0)
+Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector vC,TLorentzVector vD, TLorentzVector vE, TLorentzVector vF, int constrained = 0)
 {
 
   std::vector<TLorentzVector >  vJets;
   //  std::vector<TLorentzVector >  fitJets;
-  static Double_t fitJets[2];
+
   vJets.push_back(vA);
   vJets.push_back(vB);
   vJets.push_back(vC);
@@ -103,28 +93,34 @@ Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector
   int numbers[size] = {0, 1, 2, 3, 4, 5};
 
   unsigned int numJetForFit  = 6;
-  int iteration = 0;
+  int converged = 0;
   float minChi2 = 999;
-  float minChi2Iteration = 0;
+  float corr_top1_m, corr_top1_pt, corr_top1_eta, corr_top1_phi;
+  corr_top1_m  =corr_top1_pt = corr_top1_eta = corr_top1_phi = 0;
+  float corr_top2_m, corr_top2_pt, corr_top2_eta, corr_top2_phi;
+  corr_top2_m  =corr_top2_pt = corr_top2_eta = corr_top2_phi = 0;
+  Double_t probChi2 = 0;
   int bestCombo[size] = {0,0,0,0,0,0};
 
   if (1==1){
     do { 	 
-      if (numbers[0] < numbers[1] && numbers[2] < numbers[3] && numbers[4] < numbers[5]){
-	if(tagged && (numbers[0] != 0 || numbers[1] != 1)) continue;
+      if (numbers[0] == 0 && numbers[1] == 1 && numbers[2] < numbers[3] && numbers[4] < numbers[5]){
+
 	/*
 	if(tagged){
 	  for(unsigned short i=0; i<size; ++i) {
 	    std::cout << numbers[i] << (i+1!=size?" ":"\n");
-	  }
-		
-		
+	  }		
 	}
 	*/
-
 	
+
 	TLorentzVector v1;	TLorentzVector v2; 	TLorentzVector v3;
 	TLorentzVector v4;	TLorentzVector v5; 	TLorentzVector v6;
+
+	TLorentzVector fitted_b1;	TLorentzVector fitted_bbar; 	TLorentzVector fitted_wq;
+	TLorentzVector fitted_wqbar;	TLorentzVector fitted_wp; 	TLorentzVector fitted_wpbar;
+
 	v1=vJets[numbers[0]]; 
 	v2=vJets[numbers[1]]; 
 	v3=vJets[numbers[2]]; 
@@ -169,6 +165,7 @@ Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector
 	m6(0,0) = ErrEt (v6.Et(), v6.Eta()); // et
 	m6(1,1) = ErrEta(v6.Et(), v6.Eta()); // eta
 	m6(2,2) = ErrPhi(v6.Et(), v6.Eta()); // phi
+	
 	TFitParticleEtEtaPhi *jetB = new TFitParticleEtEtaPhi( "jetB", "jetB", &v1, &m1 );
 	TFitParticleEtEtaPhi *jetBbar = new TFitParticleEtEtaPhi( "jetBbar", "jetBbar", &v2, &m2 );
 	TFitParticleEtEtaPhi *jetWq = new TFitParticleEtEtaPhi( "jetWq", "jetWq", &v3, &m3 );
@@ -180,20 +177,22 @@ Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector
 	//vec3 and vec4 must make a W boson
 	TFitConstraintM *mCons1 = new TFitConstraintM( "WMassConstraint", "WMass-Constraint", 0, 0 , 80.4);
 	mCons1->addParticles1( jetWq, jetWqbar );
-	//vec3 and vec4 and vec1 must make a top quark
-	TFitConstraintM *mCons2 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 175.);
-	mCons2->addParticles1( jetWq, jetWqbar, jetB );
-
 	//vec5 and vec6 must make a W boson
-	TFitConstraintM *mCons3 = new TFitConstraintM( "WMassConstraint", "WMass-Constraint", 0, 0 , 80.4);
-	mCons3->addParticles1( jetWp, jetWpbar );
-	//vec5 and vec6 and vec2 must make a top quark
-	TFitConstraintM *mCons4 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 175.);
-	mCons4->addParticles1( jetWp, jetWpbar, jetBbar );
+	TFitConstraintM *mCons2 = new TFitConstraintM( "WMassConstraint", "WMass-Constraint", 0, 0 , 80.4);
+	mCons2->addParticles1( jetWp, jetWpbar );
 
+	TFitConstraintM *mCons3 = new TFitConstraintM( "EqualMasses", "EqualMasses", 0, 0 , 0.0);
+	mCons3->addParticles1( jetWp, jetWpbar, jetBbar );
+	mCons3->addParticles2( jetWq, jetWqbar, jetB  );
+
+	TFitConstraintM *mCons4 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 173.);
+	mCons4->addParticles1( jetWq, jetWqbar, jetB );
+	TFitConstraintM *mCons5 = new TFitConstraintM( "TopMassConstraint", "TopMass-Constraint", 0, 0 , 173.);
+	mCons5->addParticles1( jetWp, jetWpbar, jetBbar );
+	
 	//Definition of the fitter
-	//Add three measured particles(jets)
-	//Add two constraints
+	//Add  measured particles(jets)
+	//Add  constraints
 	TKinFitter* fitter = new TKinFitter("fitter", "fitter");
 	fitter->addMeasParticle( jetWq );
 	fitter->addMeasParticle( jetWqbar );
@@ -204,33 +203,49 @@ Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector
 	fitter->addMeasParticle( jetBbar );
 	fitter->addConstraint( mCons1 );
 	fitter->addConstraint( mCons2 );
-	fitter->addConstraint( mCons3 );
-	fitter->addConstraint( mCons4 );
+	if(!constrained)fitter->addConstraint( mCons3 );
+	
+	  if(constrained){
+	    fitter->addConstraint( mCons5 );
+	    fitter->addConstraint( mCons4 );
+	  }
 
+	
 	//Set convergence criteira
-	fitter->setMaxNbIter( 30 );
-	fitter->setMaxDeltaS( 1e-2 );
-	fitter->setMaxF( 1e-1 );
+	fitter->setMaxNbIter(500);
+	fitter->setMaxDeltaS( 5e-3 );
+	fitter->setMaxF( 1e-4 );
 	fitter->setVerbosity(1);
 
-	//Perform the fit
-	//  std::cout << "Performing kinematic fit..." << std::endl;
-	//print(fitter);
-
-	fitter->fit();
-	//std::cout << "Done." << std::endl;
-	//  print(fitter);
-	//std::cout << "Iteration: " << iteration<<std::endl;
-
-	iteration++;
+	converged = fitter->fit();
+	
 	float Chi2 = fitter->getS();
+
 	if (Chi2 < minChi2){
 	  minChi2 = Chi2;
-	  minChi2Iteration = iteration;
+	  probChi2 = TMath::Prob(fitter->getS(),fitter->getNDF());
+	  
+	  fitted_b1=FittedValues(jetB);
+	  fitted_bbar=FittedValues(jetBbar);
+	  fitted_wq=FittedValues(jetWq);
+	  fitted_wqbar=FittedValues(jetWqbar);
+	  fitted_wp=FittedValues(jetWp);
+	  fitted_wpbar=FittedValues(jetWpbar);
+	  corr_top1_m = (fitted_b1 + fitted_wq + fitted_wqbar).M();
+	  corr_top1_pt = (fitted_b1 + fitted_wq + fitted_wqbar).Pt();
+	  corr_top1_eta = (fitted_b1 + fitted_wq + fitted_wqbar).Eta();
+	  corr_top1_phi = (fitted_b1 + fitted_wq + fitted_wqbar).Phi();
+	  
+	  corr_top2_m = (fitted_bbar + fitted_wp + fitted_wpbar).M();
+	  corr_top2_pt = (fitted_bbar + fitted_wp + fitted_wpbar).Pt();
+	  corr_top2_eta = (fitted_bbar + fitted_wp + fitted_wpbar).Eta();
+	  corr_top2_phi = (fitted_bbar + fitted_wp + fitted_wpbar).Phi();
+	  
 	  for (unsigned int b=0; b < size; b++){ 
 	    bestCombo[b] = numbers[b];
 	  }
 	}
+	
   
 	delete jetWq;
 	delete jetWqbar;
@@ -242,25 +257,36 @@ Double_t*  testKinFitFWLite(TLorentzVector vA, TLorentzVector vB, TLorentzVector
 	delete mCons2;
 	delete mCons3;
 	delete mCons4;
+	delete mCons5;
+
+
 	delete fitter;
       }
     }while(std::next_permutation(numbers, numbers + size));
   }
   
 
-  //  cout<<"minChi2 "<<minChi2<<" minChi2Iteration: "<< minChi2Iteration<<endl;
-  TLorentzVector chi2val; 
+  //  cout<<"minChi2 "<<minChi2<<endl;
+
   Int_t ncombo=0;
 
   for (unsigned int b=0; b < size; b++) ncombo += bestCombo[b]*pow(10,size-b -1);
 
 
   //cout << ncombo << " ncombo " << endl;
-  fitJets[0] = ncombo;
-  fitJets[1] = minChi2;
-  /*
-  chi2val.SetPtEtaPhiE(ncombo,0,0,minChi2);
-  fitJets.push_back(chi2val);
-  */
+  static Double_t fitJets[12];
+  fitJets[0] = converged;
+  fitJets[1] = ncombo;
+  fitJets[2] = minChi2;
+  fitJets[3] = probChi2;
+  fitJets[4] = corr_top1_pt;
+  fitJets[5] = corr_top1_eta;
+  fitJets[6] = corr_top1_phi;
+  fitJets[7] = corr_top1_m;
+  fitJets[8] = corr_top2_pt;
+  fitJets[9] = corr_top2_eta;
+  fitJets[10] = corr_top2_phi;
+  fitJets[11] = corr_top2_m;
+
   return fitJets;
 }
