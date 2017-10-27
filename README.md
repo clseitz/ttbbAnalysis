@@ -9,5 +9,6 @@ cmsenv
 git clone https://github.com/clseitz/ttbbAnalysis.git
 scramv1 b
 cd ttbbAnalysis/KinFitter/test
-python runStuff.py
+python Kinematic_Fit.py [joblist] [Constrained?] [# Events]
+Ex:  python Kinematic_Fit.py joblist.txt 0 100
 ```

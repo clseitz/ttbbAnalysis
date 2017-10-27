@@ -2,14 +2,14 @@
 import sys
 import ROOT
 from array import array
-from itertools import combinations
+from itertools import permutations, combinations
 import numpy as np
 import re
 ROOT.gROOT.SetBatch(True)
 ROOT.gSystem.Load("libPhysicsToolsKinFitter.so")
-ROOT.gROOT.ProcessLine(".L /shome/vmikuni/CMSSW_8_0_25/src/ttbbAnalysis/KinFitter/test/testKinFitFWLite.C+")
+ROOT.gROOT.ProcessLine(".L Kinfit.C+")
 
-from ROOT import testKinFitFWLite,TFile,TTree,TString
+from ROOT import KinFitFWLite,TFile,TTree,TString
 
 class Particle:
       'Defines a particle with its properties and create a TTree branch associated'
@@ -31,25 +31,29 @@ class Particle:
             tree.Branch(name + '_phi',self.phi,name + '_phi/F')
             tree.Branch(name + '_eta',self.eta,name + '_eta/F')
 
-      def UpdateParam(self,vec):
+      def UpdateParam(self,vec,MCid=0,MCmatch=0):
             self.pt[0] = vec.Pt()
             self.eta[0] = vec.Eta()
             self.phi[0] = vec.Phi()
             self.mass[0] = vec.M()
-
+            if hasattr(self, 'MCid'):
+                  self.MCid[0] = MCid
+                  self.TopMCmatch[0] = MCmatch
 
 def JetComb(njets, nbjets =0,bpos_=[]):
       '''return all the combinations for jet and b-jet  positioning'''
       if nbjets == 0: return list(combinations(range(njets),6))
       else:
             bpermut_ = list(combinations(bpos_,2))
-#            print bpermut, ' bpermut '
-            jetpermut_ = list(combinations(np.delete(np.array(range(njets)),bpos_),4))#permutations of all jets - bjets
+
+#            print bpermut_, ' bpermut '
+            jetpermut_ = list(permutations((np.delete(np.array(range(njets)),bpos_)),4))#permutations of all jets - bjets
             completelist_ = []
             for i in range(len(bpermut_)):
                   for j in range(len(jetpermut_)):
+                        if jetpermut_[j][0] > jetpermut_[j][1] or jetpermut_[j][2] > jetpermut_[j][3]: continue
                         completelist_.append(bpermut_[i] + jetpermut_[j])
-#            print completelist_, ' complete list '
+#            print completelist_, ' complete list ', nbjets, ' nbjets ', njets, ' njets'
             return completelist_
 
 
@@ -66,26 +70,38 @@ if __name__ == "__main__":
       if len(sys.argv) > 3:
             nmaxentries = int(sys.argv[3])
       
-            
-      t = ROOT.TChain('vhbb/tree')
 
+      t = ROOT.TChain('vhbb/tree')
+#      t = ROOT.TChain('tree')
+
+
+
+      hCount =ROOT.TH1F()
+      hCount.SetName('hCount')
       with open(filename) as f:
             lines = f.read().splitlines()
             foutnumber = map(int, re.findall(r'\d+', lines[0]))[-1]           
             for line in lines:
-#                  print "Adding file: "+ str(line)
                   t.Add(line)
-      
-      btagbench = 0.8 #benchmark for btag cut
-      foutname = 'Kinematic_Results'
+                  f2 = ROOT.TFile.Open(line,'READ')
+                  if f2:
+                        hist = f2.Get('vhbb/Count')
+                        if hist:
+                              hCount.Add(hist)
+                              
+                        f2.Close()
 
-      if(constrained):foutname += '_Constrained'
-      else:foutname += '_Unconstrained'
+                  
+#      maxcomb = 210
+      topjets = 6
+#      btagbench = 0.8 #benchmark for btag cut
+      foutname = 'Kinematic_Results_2011'
+      if constrained:foutname += '_Constrained'
       foutname += str(foutnumber)+'.root'
       fout = TFile(foutname,'recreate')
       
       tkin =  TTree("tkin","tkin")
-      if constrained: print "Using top mass constraint"
+      if constrained == 1: print "Using top mass constraint"
       w1 = Particle('w1',tkin)
       w2 = Particle('w2',tkin)
       top1 = Particle('top1',tkin)
@@ -93,10 +109,11 @@ if __name__ == "__main__":
       b1 = Particle('b1',tkin,1)
       b2 = Particle('b2',tkin,1)            
       tt = Particle('tt',tkin)
-      lightq1 = Particle('lightq1',tkin,1)
-      lightqb1 = Particle('lightqb1',tkin,1)
-      lightq2 = Particle('lightq2',tkin,1)
-      lightqb2 = Particle('lightqb2',tkin,1)
+      
+#      lightq1 = Particle('lightq1',tkin,1)
+#      lightqb1 = Particle('lightqb1',tkin,1)
+#      lightq2 = Particle('lightq2',tkin,1)
+#      lightqb2 = Particle('lightqb2',tkin,1)
       
 
       corr_top1 = Particle('correct_top1',tkin)
@@ -109,18 +126,19 @@ if __name__ == "__main__":
       corr_tt = Particle('correct_tt',tkin)
       corr_fitted_tt = Particle('correct_fitted_tt',tkin)
       ttmc = Particle('ttMC',tkin)
-      
+     
       chi2 = array( 'f', [ 0. ] )
       tkin.Branch('chi2',chi2,'chi2/F')
-      maxcomb = 421
-      n_combinations = array( 'i', [ 0 ] )
-      tkin.Branch('n_combinations',n_combinations,'n_combinations/I')
-      combmasses = array( 'f', maxcomb*[ 0. ] )
-      tkin.Branch('comb_masses',combmasses,'comb_masses[n_combinations]/F')
+#      all_chi2 = array( 'f', maxcomb*[ 0. ] )
+#      tkin.Branch('all_chi2',all_chi2,'all_chi2[n_combinations]/F')
+#      combmasses = array( 'f', maxcomb*[ 0. ] )
+#      tkin.Branch('comb_masses',combmasses,'comb_masses[n_combinations]/F')
       correct_chi2 = array( 'f', [ 0. ] )
       tkin.Branch('correct_chi2',correct_chi2,'correct_chi2/F')
       prob_chi2 = array( 'f', [ 0. ] )
       tkin.Branch('prob_chi2',prob_chi2,'prob_chi2/F')
+#      all_prob_chi2 = array( 'f', maxcomb*[ 0. ] )
+#      tkin.Branch('all_prob_chi2',all_prob_chi2,'all_prob_chi2[n_combinations]/F')
       correct_prob_chi2 = array( 'f', [ 0. ] )
       tkin.Branch('correct_prob_chi2',correct_prob_chi2,'correct_prob_chi2/F')
       n_bjets = array( 'I', [ 0 ] )
@@ -135,6 +153,10 @@ if __name__ == "__main__":
       tkin.Branch('no_Correct',noCorrect,'no_Correct/I')
       notConverged = array( 'i', [ 0 ] )
       tkin.Branch('not_Converged',notConverged,'not_Converged/I')
+      n_sumIDtop = array( 'i', topjets*[ 0 ] )
+      tkin.Branch('n_sumIDtop',n_sumIDtop,'n_sumIDtop[6]/I')
+#      n_sumIDtop2 = array( 'i', topjets*[ 0 ] )
+#      tkin.Branch('n_sumIDtop2',n_sumIDtop2,'n_sumIDtop2[n_jets]/I')
             
       
 
@@ -143,29 +165,35 @@ if __name__ == "__main__":
 
       
       for e,event in enumerate(t) :
-#            print "processing event number: "+ str(e)
+#            print "processing from event number: ", nevtstart
+
             bpos_ = []
-            jets_ = []
+            jets_ = ROOT.vector('TLorentzVector')()
+            ordered_jets_ = ROOT.vector('TLorentzVector')()
             bestcomb_ = []
             corrbestcomb_ = []
-            
-            if t.nJet >= 6:
-                  nbjets = 0
-                  ntopjets = 0
 
-                  
+#            if t.njets >= 6 and t.n_bjets >=2 and t.njets - t.n_bjets >=4:
+            if t.nJet >= 6 and t.nGenLepFromTop == 0 and t.nGenTop == 2:
+                  ntopjets = 0
+#                  if t.Jet_pt[5]<30 or not (t.HLT_BIT_HLT_PFHT450_SixJet40_BTagCSV_p056_v or t.HLT_BIT_HLT_PFHT400_SixJet30_DoubleBTagCSV_p056_v): continue
+                  if t.Jet_pt[t.nJet-1]<40  or not (t.HLT_BIT_HLT_PFHT450_SixJet40_BTagCSV_p056_v or t.HLT_BIT_HLT_PFHT400_SixJet30_DoubleBTagCSV_p056_v): continue
+                  nbjets = 0
+                  etamin =0
                   for i in range(0,t.nJet):#find the b-tagged jets
                         jet = ROOT.TLorentzVector()
                         jet.SetPtEtaPhiM(t.Jet_pt[i],t.Jet_eta[i],t.Jet_phi[i],t.Jet_mass[i])
-                        jets_.append(jet)
+                        #jet.SetPtEtaPhiM(t.jets_pt[i],t.jets_eta[i],t.jets_phi[i],t.jets_mass[i])
+                        jets_.push_back(jet)
+                        if abs(t.Jet_eta[i]) > 2.4: etamin =1
                         if abs(t.Jet_mcMatchId[i]) == 6: ntopjets += 1
-                        if t.Jet_btagCSV[i] > btagbench:
-                              bpos_.append(i)
+                        
+                        if t.Jet_btagCSV[t.Jet_btagIdx[i]] > 0.679 :
+                              bpos_.append(t.Jet_btagIdx[i])
                               nbjets +=1
-                  if nbjets < 2: continue
                   
-                  if t.nJet - nbjets <4: continue
-                  bestchi2 = corrbestchi2 =  99999
+                  if nbjets < 2 or t.nJet - nbjets <4 or etamin > 0:continue
+                  bestchi2 = corrbestchi2 =  999999999
                   probchi2 = corrprobchi2 = -10
                   n_bjets[0] = nbjets;
                   n_jets[0] = t.nJet;
@@ -178,64 +206,63 @@ if __name__ == "__main__":
                   corr_fit_top1 = ROOT.TLorentzVector()
 
 
-#                  print t.nJet, ' njets ',nbjets, ' nbjets ', ' bpos ', bpos_ 
+#                  print t.njets, ' njets ',nbjets, ' nbjets ', ' bpos ', bpos_ 
                   comb_ = JetComb(t.nJet,nbjets,bpos_)
-
-                  n_combinations[0] = len(comb_)
                   
                   for i in range(len(comb_)):
-                        fitJets = testKinFitFWLite(jets_[comb_[i][0]],jets_[comb_[i][1]],jets_[comb_[i][2]],jets_[comb_[i][3]],jets_[comb_[i][4]], jets_[comb_[i][5]],constrained)
-                        if len(comb_) <= maxcomb: combmasses[i] = (jets_[comb_[i][0]]+jets_[comb_[i][1]]+jets_[comb_[i][2]]+jets_[comb_[i][3]]+jets_[comb_[i][4]]+ jets_[comb_[i][5]]).M()
-                        else:n_combinations[0] = 0
-                                               
-
-
+                        ncorrcomb =0
+                        for j in comb_[i]:ordered_jets_.push_back(jets_[j])
+                        fitJets = KinFitFWLite(ordered_jets_,constrained)
+                        ordered_jets_.clear()
+                        
                         notConverged[0] = int(fitJets[0])
-                        bestpermut_ = [0]+[int(d) for d in str(int(fitJets[1]))]
+                        
                         ncorr =0
-                        for j in bestpermut_:
-                              if abs(t.Jet_mcMatchId[comb_[i][j]]) == 6: ncorr+=1
-
+                        sumtop1 = sumtop2=0
                               
-                        if (bestchi2 > fitJets[2]) and (ncorr != ntopjets): 
-                              del bestcomb_[:]
-                              bestchi2 = fitJets[2]
-                              probchi2 = fitJets[3]
-#                              print bestpermut_, ' best permut '
-                              fit_top1.SetPtEtaPhiM(fitJets[4],fitJets[5],fitJets[6],fitJets[7])
-                              fit_top2.SetPtEtaPhiM(fitJets[8],fitJets[9],fitJets[10],fitJets[11])
-                              for  j in  bestpermut_:
-                                    bestcomb_.append(comb_[i][j])
-                              
-                        if (corrbestchi2 > fitJets[2]) and (ncorr == ntopjets):
-                              del corrbestcomb_[:]
-                              corrbestchi2 = fitJets[2]
-                              corrprobchi2 = fitJets[3]
-                              corr_fit_top1.SetPtEtaPhiM(fitJets[4],fitJets[5],fitJets[6],fitJets[7])
-                              corr_fit_top2.SetPtEtaPhiM(fitJets[8],fitJets[9],fitJets[10],fitJets[11])
-#                              print bestpermut_, ' best permut '
-                              for  j in  bestpermut_:
-                                    corrbestcomb_.append(comb_[i][j])
+                        sumtop1 = t.Jet_mcMatchId[comb_[i][0]] + t.Jet_mcMatchId[comb_[i][2]] + t.Jet_mcMatchId[comb_[i][3]]
+                        sumtop2 = t.Jet_mcMatchId[comb_[i][1]] + t.Jet_mcMatchId[comb_[i][4]] + t.Jet_mcMatchId[comb_[i][5]]
+                        if 6 == ntopjets and abs(sumtop1) == 18 and abs(sumtop2) == 18:ncorrcomb+=1
 
-                  if len(bestcomb_) == 0: #There were no wrong combinations!
-                        noWrong[0] = 1
-                        bestchi2 = corrbestchi2
-                        probchi2 = corrprobchi2
-                        bestcomb_ = corrbestcomb_
-                        fit_top1 = corr_fit_top1
-                        fit_top2 = corr_fit_top2
+                       
+                        if (bestchi2 > fitJets[1]) and ncorrcomb == 0 : 
+                              bestchi2 = fitJets[1]
+                              probchi2 = fitJets[2]
+#                              print bestpermut_, ' best permut '
+                              fit_top1.SetPtEtaPhiM(fitJets[3],fitJets[4],fitJets[5],fitJets[6])
+                              fit_top2.SetPtEtaPhiM(fitJets[7],fitJets[8],fitJets[9],fitJets[10])
+                              
+                              bestcomb_=comb_[i]
+                              n_sumIDtop[0] = t.Jet_mcMatchId[comb_[i][0]]
+                              n_sumIDtop[1] = t.Jet_mcMatchId[comb_[i][2]]
+                              n_sumIDtop[2] = t.Jet_mcMatchId[comb_[i][3]]
+                              n_sumIDtop[3] = t.Jet_mcMatchId[comb_[i][1]]
+                              n_sumIDtop[4] = t.Jet_mcMatchId[comb_[i][4]]
+                              n_sumIDtop[5] = t.Jet_mcMatchId[comb_[i][5]]
+                              
+                        if corrbestchi2 > fitJets[1] and ncorrcomb == 1:
+
+                              corrbestchi2 = fitJets[1]
+                              corrprobchi2 = fitJets[2]
+                              corr_fit_top1.SetPtEtaPhiM(fitJets[3],fitJets[4],fitJets[5],fitJets[6])
+                              corr_fit_top2.SetPtEtaPhiM(fitJets[7],fitJets[8],fitJets[9],fitJets[10])
+#                              print bestpermut_, ' best permut '
+
+                              corrbestcomb_=comb_[i]
+                                    
 
                   
                   if len(corrbestcomb_) == 0: #There were no correct combinations...
                         noCorrect[0] = 1
-                        corrbestchi2 = bestchi2
-                        corrprobchi2 = probchi2
+                        corrbestchi2 = -10
+                        corrprobchi2 = -10
                         corrbestcomb_ = bestcomb_
                         corr_fit_top1 = fit_top1
                         corr_fit_top2 = fit_top2
                         
-                  if (len(corrbestcomb_) == 0) or (len(bestcomb_) == 0): continue
-#                  print bestcomb_, ' best comb ', corrbestcomb_, ' best corrcomb \n' 
+#                  if (len(corrbestcomb_) == 0) or (len(bestcomb_) == 0): continue
+#                  print bestcomb_, ' best comb ', corrbestcomb_, ' best corrcomb \n'
+
                   corr_fitted_top1.UpdateParam(corr_fit_top1)
                   corr_fitted_top2.UpdateParam(corr_fit_top2)
                   corr_fitted_tt.UpdateParam(corr_fit_top1+corr_fit_top2)
@@ -248,21 +275,21 @@ if __name__ == "__main__":
                   correct_chi2[0] = corrbestchi2
                   correct_prob_chi2[0] = corrprobchi2
 
-                  lightq1.UpdateParam(jets_[bestcomb_[2]])
-                  lightqb1.UpdateParam(jets_[bestcomb_[3]])
-                  lightq2.UpdateParam(jets_[bestcomb_[4]])
-                  lightqb2.UpdateParam(jets_[bestcomb_[5]])
-                  lightq1.TopMCmatch[0] =t.Jet_mcMatchId[bestcomb_[2]] 
-                  lightqb1.TopMCmatch[0] =t.Jet_mcMatchId[bestcomb_[3]]
-                  lightq2.TopMCmatch[0] =t.Jet_mcMatchId[bestcomb_[4]] 
-                  lightqb2.TopMCmatch[0] =t.Jet_mcMatchId[bestcomb_[5]] 
-                  lightq1.MCid[0] =t.Jet_mcFlavour[bestcomb_[2]] 
-                  lightqb1.MCid[0] =t.Jet_mcFlavour[bestcomb_[3]]
-                  lightq2.MCid[0] =t.Jet_mcFlavour[bestcomb_[4]] 
-                  lightqb2.MCid[0] =t.Jet_mcFlavour[bestcomb_[5]] 
+#                  lightq1.UpdateParam(jets_[bestcomb_[2]])
+#                  lightqb1.UpdateParam(jets_[bestcomb_[3]])
+#                  lightq2.UpdateParam(jets_[bestcomb_[4]])
+#                  lightqb2.UpdateParam(jets_[bestcomb_[5]])
+#                  lightq1.TopMCmatch[0] =t.jets_mcMatchId[bestcomb_[2]] 
+#                  lightqb1.TopMCmatch[0] =t.jets_mcMatchId[bestcomb_[3]]
+#                  lightq2.TopMCmatch[0] =t.jets_mcMatchId[bestcomb_[4]] 
+#                  lightqb2.TopMCmatch[0] =t.jets_mcMatchId[bestcomb_[5]] 
+#                  lightq1.MCid[0] =t.jets_mcFlavour[bestcomb_[2]] 
+#                  lightqb1.MCid[0] =t.jets_mcFlavour[bestcomb_[3]]
+#                  lightq2.MCid[0] =t.jets_mcFlavour[bestcomb_[4]] 
+#                  lightqb2.MCid[0] =t.jets_mcFlavour[bestcomb_[5]] 
                   
-                  b1.UpdateParam(jets_[bestcomb_[0]])
-                  b2.UpdateParam(jets_[bestcomb_[1]])
+                  b1.UpdateParam(jets_[bestcomb_[0]],t.Jet_mcFlavour[bestcomb_[0]],t.Jet_mcMatchId[bestcomb_[0]])
+                  b2.UpdateParam(jets_[bestcomb_[1]],t.Jet_mcFlavour[bestcomb_[1]],t.Jet_mcMatchId[bestcomb_[1]])
                   w1.UpdateParam(jets_[bestcomb_[2]]+jets_[bestcomb_[3]])
                   w2.UpdateParam(jets_[bestcomb_[5]]+jets_[bestcomb_[4]])
                   top1.UpdateParam(jets_[bestcomb_[0]]+jets_[bestcomb_[3]]+jets_[bestcomb_[2]])
@@ -274,33 +301,24 @@ if __name__ == "__main__":
                   corr_top2.UpdateParam(jets_[corrbestcomb_[1]]+jets_[corrbestcomb_[4]]+jets_[corrbestcomb_[5]])
                   corr_tt.UpdateParam(jets_[corrbestcomb_[0]]+jets_[corrbestcomb_[1]]+jets_[corrbestcomb_[2]]+jets_[corrbestcomb_[3]]+jets_[corrbestcomb_[4]]+jets_[corrbestcomb_[5]])
 
-                  b1.MCid[0] =t.Jet_mcFlavour[bestcomb_[0]] 
-                  b2.MCid[0] = t.Jet_mcFlavour[bestcomb_[1]]
-                  b1.TopMCmatch[0] =t.Jet_mcMatchId[bestcomb_[0]] 
-                  b2.TopMCmatch[0] = t.Jet_mcMatchId[bestcomb_[1]]
+                  t1 = ROOT.TLorentzVector()
+                  t2 = ROOT.TLorentzVector()
+#                        t1.SetPtEtaPhiM(t.genTopHad_pt[0],t.genTopHad_eta[0],t.genTopHad_phi[0],t.genTopHad_mass[0])
+#                        t2.SetPtEtaPhiM(t.genTopHad_pt[1],t.genTopHad_eta[1],t.genTopHad_phi[1],t.genTopHad_mass[1])
 
-#                  b1.MCmatch[0] =t.Jet_matchBfromHadT[bestcomb_[0]] 
-#                  b2.MCmatch[0] = t.Jet_matchBfromHadT[bestcomb_[1]]
+                  t1.SetPtEtaPhiM(t.GenTop_pt[0],t.GenTop_eta[0],t.GenTop_phi[0],t.GenTop_mass[0])
+                  t2.SetPtEtaPhiM(t.GenTop_pt[1],t.GenTop_eta[1],t.GenTop_phi[1],t.GenTop_mass[1])
                   
-            
-                  if t.nGenLepFromTop == 0 and t.nGenTop == 2:
-                        t1 = ROOT.TLorentzVector()
-                        t2 = ROOT.TLorentzVector()
-                        t1.SetPtEtaPhiM(t.GenTop_pt[0],t.GenTop_eta[0],t.GenTop_phi[0],t.GenTop_mass[0])
-                        t2.SetPtEtaPhiM(t.GenTop_pt[1],t.GenTop_eta[1],t.GenTop_phi[1],t.GenTop_mass[1])
-                        
-                        ttmc.UpdateParam(t1+t2)
-                  else:
-                        ttmc.mass[0] = -10.0
-                        ttmc.pt[0] =-10.0
-                        ttmc.phi[0] =-10.0
-                        ttmc.eta[0] =-10.0
+                  ttmc.UpdateParam(t1+t2)
+                  
                         
 
                   tkin.Fill()
-            if nmaxentries > 0:
-                  if e > nmaxentries: break
+                  if nmaxentries > 0:
+                        if e > nmaxentries: break
 
+
+      hCount.Write()
       fout.Write()
       fout.Close()
 #      f.Close()
